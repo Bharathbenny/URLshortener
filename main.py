@@ -6,15 +6,17 @@ import fakeredis
 from pydantic import BaseModel
 
 app = FastAPI()
-# Add this line right here to physically create the tables on your hard drive!
+
+# It Creates the database tables automatically when the app starts or runing at first time
 models.Base.metadata.create_all(bind=models.engine)
+
 CHARS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
-# Initialize our ultra-fast Redis Cache Simulator (RAM)
+# This createsthe fast in-memory Redis cache
 cache = fakeredis.FakeRedis(decode_responses=True)
 
-# Day 1 Math Functions (Maintained for the auto-generation fallback path)
 def encode(N):
+    #It creates the short url for the long url using method called Base62
     if N == 0: return CHARS[0]
     A = []
     while N > 0:
@@ -22,24 +24,22 @@ def encode(N):
         N //= 62
     return "".join(reversed(A))
 
-# Database connection helper (Dependency Injection)
 def get_db():
+    #It opens a database connection and closes it when done every time when the app is running  
     db = models.SessionLocal()
     try:
         yield db
     finally:
         db.close()
 
-# Pydantic schema enforcing incoming JSON shape
 class ShortenRequest(BaseModel):
     long_url: str
     custom_alias: str | None = None  
 
-# 📥 Endpoint 1: Shorten a new URL (Supports Custom Aliases & Auto-Math)
 @app.post("/shorten", status_code=status.HTTP_201_CREATED)
 def shorten_url(payload: ShortenRequest, db: Session = Depends(get_db)):
     
-    # ─── 🛡️ LAYER 1: CUSTOM ALIAS PATH ───
+    #If the user provided a custom alias link name then it will first check the database if the alias is already taken or not
     if payload.custom_alias:
         existing = db.query(models.URLMapping).filter(models.URLMapping.short_code == payload.custom_alias).first()
         if existing:
@@ -56,7 +56,7 @@ def shorten_url(payload: ShortenRequest, db: Session = Depends(get_db)):
         cache.setex(payload.custom_alias, 3600, payload.long_url)
         return {"short_url": f"http://localhost:8000/{payload.custom_alias}"}
         
-    # ─── 🧮 LAYER 2: MATHEMATICAL FALLBACK PATH ───
+    #If the user doesnt provide a custom alias then we generate a new short url using encode function which creates the short url for the long url
     db_url = models.URLMapping(long_url=payload.long_url)
     db.add(db_url)
     db.commit()
@@ -68,26 +68,21 @@ def shorten_url(payload: ShortenRequest, db: Session = Depends(get_db)):
     
     cache.setex(short_code, 3600, payload.long_url)
     return {"short_url": f"http://localhost:8000/{short_code}"}
-
-# 📤 Endpoint 2: Redirect short link (Upgraded for Cache Verification & Automatic Click Logging)
+#this is the place where we redirect the user to the long url when they used the short url which will redirect the user to the long url
 @app.get("/{short_code}")
 def redirect_url(short_code: str, request: Request, db: Session = Depends(get_db)):
     
-    # 🏃 Check Redis RAM cache first to keep redirection snappy
+    #will first check the redis cache if the short url present in the cache or not
     cached_url = cache.get(short_code)
     
-    # Even if it's a Cache Hit, we query the SQL record in the background 
-    # to find its ID so we can properly link the analytics record.
+    #we also check the database if the short url is present in the database or not
     db_url = db.query(models.URLMapping).filter(models.URLMapping.short_code == short_code).first()
     
     if not db_url:
         raise HTTPException(status_code=404, detail="URL not found")
         
-    # 📊 AUTOMATIC ANALYTICS TRACKING
-    # Extract browser details ("User-Agent") directly from incoming HTTP Request headers
+    #it reads the data from the request headers from the user who used short url and save the click data
     browser_info = request.headers.get("user-agent")
-    
-    # Build and commit a tracking record tied directly to this URL's Primary Key ID
     new_click = models.ClickAnalytic(url_id=db_url.id, user_agent=browser_info)
     db.add(new_click)
     db.commit()
@@ -96,11 +91,11 @@ def redirect_url(short_code: str, request: Request, db: Session = Depends(get_db
         print("🚀 CACHE HIT! Redirecting instantly from Redis RAM...")
         return RedirectResponse(url=cached_url, status_code=status.HTTP_302_FOUND)
     
+    #it saves the url in the cache if it was not there already
     print("⚠️ CACHE MISS! Fetching from slow SQLite Database hard drive...")
     cache.setex(short_code, 3600, db_url.long_url)
     return RedirectResponse(url=db_url.long_url, status_code=status.HTTP_302_FOUND)
 
-# 📊 Endpoint 3: Public Metrics Dashboard
 @app.get("/analytics/{short_code}")
 def get_url_analytics(short_code: str, db: Session = Depends(get_db)):
     
@@ -109,11 +104,11 @@ def get_url_analytics(short_code: str, db: Session = Depends(get_db)):
     if not db_url:
         raise HTTPException(status_code=404, detail="URL not found")
         
-    # Pull total click records from our relational relationship setup
+    #counts the total clicks for the short url
     total_clicks = len(db_url.clicks)
     
-    # Build a clean list of historical timestamps and browser signatures
     click_history = []
+    #it will read the click history for the short url
     for click in db_url.clicks:
         click_history.append({
             "clicked_at": click.timestamp,
