@@ -61,7 +61,7 @@ def shorten_url(payload: ShortenRequest, db: Session = Depends(get_db)):
         db.refresh(db_url)
         
         cache.setex(payload.custom_alias, 3600, payload.long_url)
-        return {"short_url": f"http://localhost:8000/{payload.custom_alias}"}
+        return {"short_url = f"https://trim-bharath.onrender.com/{short_code}""}
         
     #If the user doesnt provide a custom alias then we generate a new short url using encode function which creates the short url for the long url
     db_url = models.URLMapping(long_url=payload.long_url)
