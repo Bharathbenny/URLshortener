@@ -74,7 +74,7 @@ def shorten_url(payload: ShortenRequest, db: Session = Depends(get_db)):
     db.commit()
     
     cache.setex(short_code, 3600, payload.long_url)
-    return {"short_url": f"http://localhost:8000/{short_code}"}
+    return {"short_url = f"https://trim-bharath.onrender.com/{short_code}""}
 #this is the place where we redirect the user to the long url when they used the short url which will redirect the user to the long url
 @app.get("/{short_code}")
 def redirect_url(short_code: str, request: Request, db: Session = Depends(get_db)):
