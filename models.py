@@ -1,9 +1,13 @@
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey
 from sqlalchemy.orm import relationship, sessionmaker, declarative_base
 from datetime import datetime
-
-#This is the database url for the sqlite database for creating the database tables
-DATABASE_URL = "sqlite:///./urls.db"
+import os
+# --- DYNAMIC DATABASE PATH FOR DEPLOYMENT ---
+# Render automatically sets an environment variable named 'RENDER' to 'true'
+if os.environ.get("RENDER"):
+    DATABASE_URL = "sqlite:////data/urls.db"  # Production Linux persistent disk path
+else:
+    DATABASE_URL = "sqlite:///./urls.db"      # Local Windows testing path
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 
 #This is the session factory for the database connection ehich will be used to create the database tables
