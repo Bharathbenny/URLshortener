@@ -1,8 +1,7 @@
 import { useState } from "react";
 
 export default function App() {
-  const API_BASE = "http://localhost:8000";
-
+  const API_BASE = "https://trim-bharath.onrender.com";
   // State hooks
   const [longUrl, setLongUrl] = useState("");
   const [customAlias, setCustomAlias] = useState("");
