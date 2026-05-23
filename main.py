@@ -3,10 +3,17 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 import models
 import fakeredis  
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 app = FastAPI()
-
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 # It Creates the database tables automatically when the app starts or runing at first time
 models.Base.metadata.create_all(bind=models.engine)
 

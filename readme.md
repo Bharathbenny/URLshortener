@@ -1,103 +1,123 @@
-Tech Stack & Dependencies
-Core Framework: FastAPI (Asynchronous Server Gateway Interface)
+# Trim. — URL Shortener
 
-ASGI Server: Uvicorn
+A full-stack URL shortener with click analytics. The **FastAPI** backend handles shortening, redirects, and telemetry; the **React** frontend provides a clean UI for creating links and viewing metrics.
 
-Object-Relational Mapper: SQLAlchemy Core
+## Tech Stack
 
-Data Validation Engine: Pydantic v2
+| Layer | Technology |
+|-------|------------|
+| Backend | FastAPI, Uvicorn |
+| ORM | SQLAlchemy |
+| Validation | Pydantic v2 |
+| Cache | Redis (simulated locally via fakeredis) |
+| Database | SQLite |
+| Frontend | React, Vite |
 
-Caching Layer: Redis (Simulated locally via fakeredis for light, zero-dependency environment setups)
+## Project Structure
 
-Database Driver: Built-in SQLite
+```
+URLshortener/
+├── main.py          # FastAPI routes
+├── models.py        # SQLAlchemy models
+├── readme.md
+└── frontend/        # React UI
+    ├── src/App.jsx
+    └── ...
+```
 
-Installation & Setup
-Follow these steps to run the complete environment locally on your machine.
+## Installation & Setup
 
-1. Clone the Repository
-Bash
-git clone [https://github.com/Bharathbenny/URLshortener.git](https://github.com/Bharathbenny/URLshortener.git)
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/Bharathbenny/URLshortener.git
 cd URLshortener
-2. Set Up a Virtual Environment (Recommended)
-Bash
+```
+
+### 2. Backend setup
+
+Create and activate a virtual environment:
+
+```bash
 # Windows
 python -m venv venv
-venv\\Scripts\\activate
+venv\Scripts\activate
 
-# macOS/Linux
+# macOS / Linux
 python3 -m venv venv
 source venv/bin/activate
-3. Install Dependencies
-Bash
+```
+
+Install Python dependencies and start the API server:
+
+```bash
 pip install fastapi uvicorn sqlalchemy fakeredis pydantic
-4. Fire Up the Production Server
-Bash
 uvicorn main:app --reload
-Once the server process boots completely, the backend application will be accessible at http://127.0.0.1:8000.
+```
 
-Interactive API Documentation & Testing
-This project leverages FastAPI's automated OpenAPI compilation. To test the system lifecycles without writing any frontend code or using external client tools like Postman:
+The backend runs at **http://127.0.0.1:8000**.
 
-Open your web browser and navigate to http://127.0.0.1:8000/docs
+### 3. Frontend setup
 
-You will see an interactive Swagger UI Dashboard exposing the API specifications.
+In a separate terminal:
 
-Endpoint Specifications & JSON Payload Examples
-1. Create a Shortened Link (POST /shorten)
-Accepts a destination link and an optional custom string token. Returns a fully qualified short redirection URL.
+```bash
+cd frontend
+npm install
+npm run dev
+```
 
-Payload Layout (With Custom Alias Name):
+The frontend dev server runs at **http://localhost:5173** and talks to the backend at `http://localhost:8000`.
 
-JSON
+## API Endpoints
+
+Interactive docs are available at **http://127.0.0.1:8000/docs**.
+
+### Create a short link — `POST /shorten`
+
+With a custom alias:
+
+```json
 {
-  "long_url": "[https://github.com/bharath-code](https://github.com/bharath-code)",
+  "long_url": "https://github.com/bharath-code",
   "custom_alias": "my-portfolio"
 }
-Payload Layout (Default Algorithmic Fallback):
+```
 
-JSON
+Auto-generated short code:
+
+```json
 {
-  "long_url": "[https://wikipedia.org](https://wikipedia.org)"
+  "long_url": "https://wikipedia.org"
 }
-2. Redirect Link Execution (GET /{short_code})
-Intercepts the generated token, registers click analytics parameters, checks the active Redis RAM cluster, and issues an instant HTTP 302 Found redirect command to the client browser.
+```
 
-3. Fetch Telemetry Data Dashboard (GET /analytics/{short_code})
-Queries the relational data tables to calculate complete traffic stats for any generated token.
+### Redirect — `GET /{short_code}`
 
-Response Payload Example:
+Looks up the short code (cache-first), logs click analytics, and returns an HTTP 302 redirect.
 
-JSON
+### Analytics — `GET /analytics/{short_code}`
+
+```json
 {
   "short_code": "my-portfolio",
-  "destination_url": "[https://github.com/Bharathbenny](https://github.com/Bharathbenny)",
+  "destination_url": "https://github.com/Bharathbenny",
   "total_clicks": 2,
   "click_history": [
     {
       "clicked_at": "2026-05-19T10:12:34.567890",
-      "device_signature": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36..."
-    },
-    {
-      "clicked_at": "2026-05-19T10:14:12.112233",
-      "device_signature": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36..."
+      "device_signature": "Mozilla/5.0 ..."
     }
   ]
 }
-Deep-Dive: System Design Decisions
-Why Base62 Encoding?
-Many basic shorteners use randomly generated strings. However, at scale, random generation leads to database collision checks (ensuring a string isn't already taken), which increases latency.
+```
 
-This engine uses a bi-directional mathematical Base62 calculation. When a default link is saved, it is assigned a fast auto-incrementing integer key (1, 2, 3). The system converts this integer into a base-62 string character set (a-z, A-Z, 0-9). This ensures each algorithmic link has a guaranteed mathematically unique mapping with zero resource overhead.
+## System Design
 
-How the Cache Shield Prevents Database Failures
-Hard drive storage operations (like writing to or reading from an SQLite file) are slow. If a link goes viral, thousands of people will click it at the exact same moment, causing a database performance bottleneck.
+### Base62 encoding
 
-This engine solves this issue via the Cache-Aside Pattern:
+Instead of random strings (which require collision checks), default links use an auto-incrementing integer ID converted to Base62 (`a-z`, `A-Z`, `0-9`). Each link gets a guaranteed unique mapping with no extra database lookups.
 
-A user clicks http://localhost:8000/my-portfolio.
+### Cache-aside pattern
 
-The engine immediately checks the Redis RAM Cache (which can process over 100,000 operations per second).
-
-Cache Hit: The long URL matches instantly in RAM. The user is redirected in microseconds, and the hard drive is completely bypassed.
-
-Cache Miss: If the server reboots and RAM is empty, it catches the event, reads the long URL from SQLite, saves a copy back into Redis RAM with a 1-hour Time-To-Live (TTL) expiration window, and logs the click telemetry securely. The very next user click becomes a fast Cache Hit.
+Redirects check **fakeredis** first. On a cache hit, the long URL is returned from memory and SQLite is skipped. On a miss, the URL is read from SQLite, cached with a 1-hour TTL, and the click is logged. Subsequent requests become fast cache hits.
